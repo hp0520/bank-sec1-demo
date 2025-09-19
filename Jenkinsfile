@@ -1,57 +1,59 @@
 pipeline {
-    agent any
+  agent any
 
-    options {
-        timestamps()     // add timestamps to logs
+  options { timestamps() }
+
+  environment {
+    MAVEN_OPTS = '-Dmaven.test.failure.ignore=true'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        sshagent(credentials: ['github-ssh']) {   // <-- uses Jenkins credential you just created
+          sh '''
+            set -e
+            if [ ! -d ".git" ]; then
+              git clone git@github.com:hp0520/bank-sec1-demo.git .
+            else
+              git remote set-url origin git@github.com:hp0520/bank-sec1-demo.git
+            fi
+            git fetch --all --prune
+            git checkout -B main origin/main || git checkout main || true
+          '''
+        }
+      }
     }
 
-    environment {
-        MAVEN_OPTS = '-Dmaven.test.failure.ignore=true'
+    stage('Verify Tooling') {
+      steps {
+        sh '''
+          git --version
+          mvn -version || (echo "Maven not found on agent. Install Maven or run on a Maven agent." && exit 1)
+        '''
+      }
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
-                // Use your Jenkins SSH credential ID here
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],  // change to */master if needed
-                    userRemoteConfigs: [[
-                        url: 'git@github.com:hp0520/bank-sec1-demo.git',
-                        credentialsId: 'github-ssh'   // <-- update if your ID is different
-                    ]]
-                ])
-            }
-        }
-
-        stage('Build & Test') {
-            steps {
-                sh 'mvn -B -ntp clean verify'
-            }
-        }
-
-        stage('Publish Test Reports') {
-            steps {
-                junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-            }
-        }
-
-        stage('Archive Artifacts') {
-            steps {
-                archiveArtifacts artifacts: 'target/**/*.jar, target/**/*.war', fingerprint: true
-            }
-        }
+    stage('Build & Test') {
+      steps {
+        sh 'mvn -B -ntp clean verify'
+      }
     }
 
-    post {
-        always {
-            cleanWs()   // clean workspace after each build
-        }
-        failure {
-            echo '❌ Build failed. Check logs for details.'
-        }
-        success {
-            echo '✅ Build succeeded!'
-        }
+    stage('Publish Test Reports') {
+      steps {
+        junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+      }
     }
+
+    stage('Archive Artifacts') {
+      steps {
+        archiveArtifacts artifacts: 'target/**/*.jar, target/**/*.war', fingerprint: true, onlyIfSuccessful: false
+      }
+    }
+  }
+
+  post {
+    always { cleanWs() }
+  }
 }
