@@ -9,7 +9,7 @@ pipeline {
     IMAGE_TAG  = "${BUILD_NUMBER}"
   }
 
-  options { timestamps(); ansiColor('xterm') }
+  options { timestamps() }
 
   stages {
     stage('Checkout') {
@@ -55,7 +55,7 @@ pipeline {
       }
       post {
         always {
-          // Warnings NG needs this step; install the plugin
+          // Requires Warnings Next Generation plugin; otherwise remove this line
           recordIssues tools: [spotBugs(pattern: '**/target/spotbugsXml.xml')]
           archiveArtifacts artifacts: 'target/spotbugsXml.xml', fingerprint: true
         }
@@ -116,7 +116,7 @@ pipeline {
           docker rm -f bank-app 2>/dev/null || true
           docker run -d --name bank-app --network zap-net -p 8080:8080 ${IMAGE_NAME}:${IMAGE_TAG}
 
-          # wait for app (use curl image inside the same network)
+          # wait until the app responds
           for i in {1..30}; do
             docker run --rm --network zap-net curlimages/curl:8.8.0 -sSf http://bank-app:8080/users >/dev/null && exit 0
             sleep 2
